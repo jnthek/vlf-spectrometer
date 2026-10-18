@@ -2,6 +2,7 @@
 * @file alsaspectrometer.c
 * @author Jishnu N. Thekkeppattu
 * @date 2026-10-18
+* @copyright Copyright (C) 2026 Jishnu N. Thekkeppattu. Released under the GNU General Public License v3.0 (GPLv3).
 * @brief A spectrometer utility that uses the GNU/linux ALSA framework.
 * @details This code can be used to record spectra using a soundcard. It uses FFTW3 to compute spectra, and writes out the spectra as 
 * a binary file with some metadata. A description of structure of the output binary file format is below.
