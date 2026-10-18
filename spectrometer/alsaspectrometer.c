@@ -3,6 +3,7 @@
 * @author Jishnu N. Thekkeppattu
 * @date 2026-10-18
 * @copyright Copyright (C) 2026 Jishnu N. Thekkeppattu. Released under the GNU General Public License v3.0 (GPLv3).
+* @remark SPDX-License-Identifier: GPL-3.0-or-later
 * @brief A spectrometer utility that uses the GNU/linux ALSA framework.
 * @details This code can be used to record spectra using a soundcard. It uses FFTW3 to compute spectra, and writes out the spectra as 
 * a binary file with some metadata. A description of structure of the output binary file format is below.
@@ -51,15 +52,16 @@
     #define DATAFMT double
 #endif
 
-void print_usage() 
+void print_usage(FILE *stream) 
 {
-    printf("Usage: alsaspectrometer [options]\n");
-    printf("  -D Specify the input sound device (e.g. hw:1,0), no default\n");
-    printf("  -N Specify the number of points of FFT (default 4096)\n");
-    printf("  -r Specify the ADC sample rate (default 96000)\n");
-    printf("  -i Specify the integration time in seconds (default 1). The actual integration time will be different to satisfy certain FFT criteria\n");
-    printf("  -T Specify the acquisition duration, also knows as timeout, in seconds (default 60)\n");
-    printf("  --help Display this help message\n");
+    fprintf(stream, "Usage: alsaspectrometer [options]\n");
+    fprintf(stream, "  -D Specify the input sound device (e.g. hw:1,0), no default\n");
+    fprintf(stream, "  -C Specify the channel to be selected for FFT - 0 for Right, 1 for Left (default 0)\n");
+    fprintf(stream, "  -N Specify the number of points of FFT (default 4096)\n");
+    fprintf(stream, "  -r Specify the ADC sample rate (default 96000)\n");
+    fprintf(stream, "  -i Specify the integration time in seconds (default 1). The actual integration time will be different to satisfy certain FFT criteria\n");
+    fprintf(stream, "  -T Specify the acquisition duration, also knows as timeout, in seconds (default 60)\n");
+    fprintf(stream, "  --help Display this help message\n");
 }
 
 void blackman_window(double *window, int N) 
@@ -77,6 +79,8 @@ int main(int argc, char *argv[])
     unsigned int NFFT = 4096;
     unsigned int t_int = 1; //Maybe float can be used for much higher temporal resolution, but in that case, why not record raw .wav files ?
     unsigned int timeout = 60;
+    unsigned int channel_index = 0;
+    int channel_offset;
 
     snd_pcm_t *capture_handle;
     snd_pcm_hw_params_t *hw_params;
@@ -100,8 +104,8 @@ int main(int argc, char *argv[])
             case 'r':  // sampling rate
                 rate = (unsigned int) strtol(optarg, NULL, 10);
                 break;
-            case 'C':  // channels - to be decided later on how to use this information
-                // rate = (unsigned int) strtol(optarg, NULL, 10);
+            case 'C':  // channels - a number of select the left or right channel
+                channel_index = (unsigned int) strtol(optarg, NULL, 10);
                 break;
             case 'N':  // NFFT
                 NFFT = (unsigned int) strtol(optarg, NULL, 10);
@@ -113,22 +117,38 @@ int main(int argc, char *argv[])
                 timeout = (unsigned int) strtol(optarg, NULL, 10);
                 break;
             case 'h':  // Help
-                print_usage();
+                print_usage(stdout);
                 return 0;
             case '?':  // Invalid option
-                print_usage();
+                print_usage(stderr);
                 return 1;
             default:
-                print_usage();
+                print_usage(stderr);
                 return 1;
         }
     }
     
-    if (!has_devstring) {
+    if (!has_devstring) 
+    {
 		fprintf(stderr, "Error: The required '-D' option was not provided.\n");
-		print_usage();
+		print_usage(stderr);
 		exit(EXIT_FAILURE);
 	}
+
+    if (0 == channel_index)
+    {
+        channel_offset = 0;
+    }
+    else if (1 == channel_index)
+    {
+        channel_offset = 1;
+    }
+    else
+    {
+        fprintf(stderr, "Error: The specified channel index is incorrect.\n");
+		print_usage(stderr);
+		exit(EXIT_FAILURE);
+    }
 
     snd_pcm_hw_params_malloc (&hw_params);
     snd_pcm_hw_params_any (capture_handle, hw_params);
@@ -180,7 +200,7 @@ int main(int argc, char *argv[])
 
     Nframes = (int)(t_int*NFFT*((int)(rate/NFFT))); //This logic needs to be revisited ...........
     ADC_buffer = malloc(Nframes * 4 * 2); //Each sample is 32 bits or 4 bytes long and each frame has two samples - one for R and one for L
-    if (0==mlock(ADC_buffer, Nframes * 4 * 2)) //memlock the acquisition buffer to avoid paging it
+    if (0 == mlock(ADC_buffer, Nframes * 4 * 2)) //memlock the acquisition buffer to avoid paging it
     {
         fprintf(stderr, "ADC buffer successfully locked to memory\n");
     }
@@ -224,6 +244,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
 
+        //Reset the average power buffer
         for (int i=0; i<Nfftout; i++)
         {
             avg_power_spec[i] = 0;
@@ -231,12 +252,17 @@ int main(int argc, char *argv[])
 
         for (int aver_index=0; aver_index<Naver; aver_index++)
         {            
+            //Windowing is applied here
             for (int i=0; i<NFFT; i++)
             {
-                in_buffer_fft[i] = (((double)(ADC_buffer[(aver_index*NFFT) + (i*2) + 1]))/INT32_MAX) * bm_window[i]; //Windowing is applied here
+                in_buffer_fft[i] = (((double)(ADC_buffer[(aver_index*NFFT) + (i*2) + channel_offset]))/INT32_MAX) * bm_window[i]; 
                 //Some interference removal can be done here ?
             }
+
+            //Calculate the FFT
             fftw_execute(p);
+
+            //Calculate the power spectrum
             for (int fft_index = 0; fft_index < Nfftout; fft_index++)
             {
                 avg_power_spec[fft_index] += (DATAFMT)(out_buffer_fft[fft_index][0]*out_buffer_fft[fft_index][0] + out_buffer_fft[fft_index][1]*out_buffer_fft[fft_index][1]);
