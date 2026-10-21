@@ -9,17 +9,17 @@
 * a binary file with some metadata. A description of structure of the output binary file format is below.
 * # Binary file format
 *   1) Header
-*      A binary data file starts with a 1024-byte header, which is restructured into a 128 double array. 
+*      A binary data file starts with a 1024-byte header, which is restructured into a double array of size 128. 
 *      The contents of this array, in their order, are as follows
 *          a) Epoch :- this is the epoch, in UNIX timestamp format, with respect to which the timestamp offsets are calculated for the spectra.
 *          b) Sampling rate :- Sampling frequency in Hz
 *          c) NFFT :- self explanatory, the spectra have (NFFT/2)+1 values as the input data are real
 *          d) Integration time :- the actual integration time in s, this is generally lower than the desired time entered by the user
-*          e) Data precision :- Indicates whether the spectral data are in float32 format. This is based on a macro USEFLOAT set in this C code.
+*          e) Data precision :- Indicates whether the spectral data are in float32 format. This is based on a macro USEDOUBLE that can set as a compiler flag.
 *              If the value is 1, the spectra section has float precision (32 bits). 
 *              If the value is 0, the spectra are double precision (64 bits). 
-*          f) (to be implemented) :- An eight byte string that has the observatory name. This will be written out by the C code as a char array 
-*              and will have to be read back in python as a string.
+*          f) Observatory ident :- An eight byte string that has the observatory name. This is a string typecast to double, 
+*              and can be read in python as a string. This is done in the example jupter notebook.
 *      The rest of the 1024 byte array is padded with zeros, and can be used in future for additional metadata. 
 *      The reason for doing this way is to enable easy loading into other languages, especially python/numpy 
 *      which has only minimal support for binary files. Besides, the entire header can be inspected easily using a single od command.
@@ -45,11 +45,9 @@
 #define PI 3.14159265358979323846 
 
 // The default is to use float32 for output spectra
-
 #ifdef USEDOUBLE
     #define DATAFMT double
 #endif
-
 #ifndef USEDOUBLE
     #define DATAFMT float
 #endif
@@ -59,6 +57,7 @@
     #define AUDFMT SND_PCM_FORMAT_S32_LE 
 #endif 
 
+// The default observatory name is TEST
 #ifndef OBS
     #define OBS "TEST"
 #endif
@@ -121,7 +120,7 @@ int main(int argc, char *argv[])
             case 'r':  // sampling rate
                 rate = (unsigned int) strtol(optarg, NULL, 10);
                 break;
-            case 'C':  // channels - a number of select the left or right channel
+            case 'C':  // channels - a number to select the left or right channel
                 channel_index = (unsigned int) strtol(optarg, NULL, 10);
                 break;
             case 'N':  // NFFT
