@@ -43,13 +43,24 @@
 #include <sys/mman.h>
 
 #define PI 3.14159265358979323846 
-#define USEFLOAT // If this is defined, float32 will be used as the format for data. If not, float64 aka double will be used.
-#ifdef USEFLOAT
+
+// The default is to use float32 for output spectra
+
+#ifdef USEDOUBLE
+    #define DATAFMT double
+#endif
+
+#ifndef USEDOUBLE
     #define DATAFMT float
 #endif
 
-#ifndef USEFLOAT
-    #define DATAFMT double
+// The default is to use S32_LE to comply with PCM1808
+#ifndef AUDFMT
+    #define AUDFMT SND_PCM_FORMAT_S32_LE 
+#endif 
+
+#ifndef OBS
+    #define OBS "TEST"
 #endif
 
 void print_usage(FILE *stream) 
@@ -81,6 +92,12 @@ int main(int argc, char *argv[])
     unsigned int timeout = 60;
     unsigned int channel_index = 0;
     int channel_offset;
+
+    const char obs_ident[8] = OBS; 
+    double obs_ident_encoded = 0.0;
+    memcpy(&obs_ident_encoded, obs_ident, 8);
+
+    snd_pcm_format_t audio_format = AUDFMT;
 
     snd_pcm_t *capture_handle;
     snd_pcm_hw_params_t *hw_params;
@@ -153,16 +170,22 @@ int main(int argc, char *argv[])
     snd_pcm_hw_params_malloc (&hw_params);
     snd_pcm_hw_params_any (capture_handle, hw_params);
     snd_pcm_hw_params_set_access (capture_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
-    if ((err = snd_pcm_hw_params_set_format (capture_handle, hw_params, SND_PCM_FORMAT_S32_LE)) < 0) // Will not compromise on this !
+
+    // Set the all important audio format. The default for audio_format parameter here is SND_PCM_FORMAT_S32_LE 
+    if ((err = snd_pcm_hw_params_set_format (capture_handle, hw_params, audio_format)) < 0) 
     {
         fprintf (stderr, "cannot set sample format (%s)\n",snd_strerror (err));
         exit(EXIT_FAILURE);
     }
+
+    // Set the sampling rate.
     if ((err = snd_pcm_hw_params_set_rate (capture_handle, hw_params, rate, 0)) < 0) 
     {
         fprintf (stderr, "cannot set sample rate (%s)\n",snd_strerror (err));
         exit(EXIT_FAILURE);
     }    
+
+    // Set the channel count to be 2, i.e. stereo
     if ((err = snd_pcm_hw_params_set_channels (capture_handle, hw_params, 2)) < 0) 
     {
         fprintf (stderr, "cannot set channel count (%s)\n",snd_strerror (err));
@@ -230,9 +253,16 @@ int main(int argc, char *argv[])
     metadata[1] = (double)rate;
     metadata[2] = (double)NFFT;
     metadata[3] = (double)actual_t_int;
-    #ifdef USEFLOAT
+
+    #ifdef USEDOUBLE
+        fprintf(stderr, "Using double precision for spectra\n");
+        metadata[4] = 0.0;
+    #endif
+    #ifndef USEDOUBLE
+        fprintf(stderr, "Using float precision for spectra\n");
         metadata[4] = 1.0;
     #endif
+    metadata[5] = (double)obs_ident_encoded;
     fwrite (metadata, sizeof(metadata[0]), (1024/sizeof(sizeof(metadata[0]))), file_pointer);
     free(metadata);
 
@@ -262,7 +292,7 @@ int main(int argc, char *argv[])
             //Calculate the FFT
             fftw_execute(p);
 
-            //Calculate the power spectrum
+            //Calculate the power spectrum. The DATAFMT parameter helps with typecasting to float or double
             for (int fft_index = 0; fft_index < Nfftout; fft_index++)
             {
                 avg_power_spec[fft_index] += (DATAFMT)(out_buffer_fft[fft_index][0]*out_buffer_fft[fft_index][0] + out_buffer_fft[fft_index][1]*out_buffer_fft[fft_index][1]);
