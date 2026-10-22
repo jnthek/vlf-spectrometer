@@ -1,1 +1,6 @@
 *.bin
+*.npy
+vlfspec*.jpg
+fftw_wisdom.dat
+alsaspectrometer
+*.npy
