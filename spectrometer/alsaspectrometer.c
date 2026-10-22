@@ -46,9 +46,11 @@
 
 // The default is to use float32 for output spectra
 #ifdef USEDOUBLE
+    // #warning "Compiling for double (float64) precision spectra files"
     #define DATAFMT double
 #endif
 #ifndef USEDOUBLE
+    // #warning "Compiling for float (float32) precision spectra files"
     #define DATAFMT float
 #endif
 
@@ -66,7 +68,7 @@ void print_usage(FILE *stream)
 {
     fprintf(stream, "Usage: alsaspectrometer [options]\n");
     fprintf(stream, "  -D Specify the input sound device (e.g. hw:1,0), no default\n");
-    fprintf(stream, "  -C Specify the channel to be selected for FFT - 0 for Right, 1 for Left (default 0)\n");
+    fprintf(stream, "  -C Specify the channel to be selected for FFT - 0 for Left, 1 for Right (default 0)\n");
     fprintf(stream, "  -N Specify the number of points of FFT (default 4096)\n");
     fprintf(stream, "  -r Specify the ADC sample rate (default 96000)\n");
     fprintf(stream, "  -i Specify the integration time in seconds (default 1). The actual integration time will be different to satisfy certain FFT criteria\n");
@@ -146,17 +148,19 @@ int main(int argc, char *argv[])
     
     if (!has_devstring) 
     {
-		fprintf(stderr, "Error: The required '-D' option was not provided.\n");
+		fprintf(stderr, "Error: The required '-D' option was not provided\n");
 		print_usage(stderr);
 		exit(EXIT_FAILURE);
 	}
 
     if (0 == channel_index)
     {
+        fprintf(stderr, "Using channel_index = 0, Left channel\n");
         channel_offset = 0;
     }
     else if (1 == channel_index)
     {
+        fprintf(stderr, "Using channel_index = 1, Right channel\n");
         channel_offset = 1;
     }
     else
@@ -199,7 +203,20 @@ int main(int argc, char *argv[])
     unsigned int Nframes;
     float actual_t_int;
 
-    int32_t *ADC_buffer;
+    #if AUDFMT == SND_PCM_FORMAT_S32_LE
+        fprintf(stderr, "Using 32 bit inputs\n");
+        int32_t *ADC_buffer;
+        int sample_size = 4; // four bytes per sample
+        double sample_maxval = (double)INT32_MAX; //Maximum value that a sample can have, used for normalisation later
+    #elif AUDFMT == SND_PCM_FORMAT_S16_LE
+        fprintf(stderr, "Using 16 bit inputs\n");
+        int16_t *ADC_buffer;
+        int sample_size = 2; // two bytes per sample
+        double sample_maxval = (double)INT16_MAX; //Maximum value that a sample can have, used for normalisation later
+    #else
+        #error "Selected audio format not yet implemented !\n" // Stops compilation if neither
+    #endif
+    
     int Naver;
     double start_time;
     double acq_time = 0;
@@ -220,9 +237,14 @@ int main(int argc, char *argv[])
     fftw_plan p = fftw_plan_dft_r2c_1d(NFFT, in_buffer_fft, out_buffer_fft, FFTW_MEASURE); 
     fftw_export_wisdom_to_filename("fftw_wisdom.dat");
 
-    Nframes = (int)(t_int*NFFT*((int)(rate/NFFT))); //This logic needs to be revisited ...........
-    ADC_buffer = malloc(Nframes * 4 * 2); //Each sample is 32 bits or 4 bytes long and each frame has two samples - one for R and one for L
-    if (0 == mlock(ADC_buffer, Nframes * 4 * 2)) //memlock the acquisition buffer to avoid paging it
+    //The logic below may need to be revisited ....
+    Nframes = (int)(t_int*NFFT*((int)(rate/NFFT))); 
+
+    //Each sample is 4 bytes (for S32_LE) or two bytes (for S16_LE) long and each frame has two samples - one for R and one for L
+    ADC_buffer = malloc(Nframes * sample_size * 2); 
+    
+    //memlock the acquisition buffer to avoid paging it
+    if (0 == mlock(ADC_buffer, Nframes * sample_size * 2)) 
     {
         fprintf(stderr, "ADC buffer successfully locked to memory\n");
     }
@@ -232,7 +254,7 @@ int main(int argc, char *argv[])
     printf ("%d, %d, %f\n", Nframes, Naver, actual_t_int);
 
     FILE *file_pointer;
-    double* metadata = malloc(1024); //1KB of metadata space, double needed to store the epoch of unixtimestamp
+    double* metadata = malloc(1024); //1KB of metadata space, configured as 128 double variables
     DATAFMT* avg_power_spec = malloc(Nfftout*sizeof(DATAFMT));
     DATAFMT timedelta = 0;
 
@@ -284,7 +306,7 @@ int main(int argc, char *argv[])
             //Windowing is applied here
             for (int i=0; i<NFFT; i++)
             {
-                in_buffer_fft[i] = (((double)(ADC_buffer[(aver_index*NFFT) + (i*2) + channel_offset]))/INT32_MAX) * bm_window[i]; 
+                in_buffer_fft[i] = (((double)(ADC_buffer[(aver_index*NFFT) + (i*2) + channel_offset]))/sample_maxval) * bm_window[i]; 
                 //Some interference removal can be done here ?
             }
 
@@ -294,7 +316,8 @@ int main(int argc, char *argv[])
             //Calculate the power spectrum. The DATAFMT parameter helps with typecasting to float or double
             for (int fft_index = 0; fft_index < Nfftout; fft_index++)
             {
-                avg_power_spec[fft_index] += (DATAFMT)(out_buffer_fft[fft_index][0]*out_buffer_fft[fft_index][0] + out_buffer_fft[fft_index][1]*out_buffer_fft[fft_index][1]);
+                avg_power_spec[fft_index] += (DATAFMT)(out_buffer_fft[fft_index][0]*out_buffer_fft[fft_index][0] 
+                                                     + out_buffer_fft[fft_index][1]*out_buffer_fft[fft_index][1]);
             }
         }
         clock_gettime(CLOCK_REALTIME, &tv);

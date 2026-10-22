@@ -10,7 +10,7 @@ else
     echo "Successfully bound to the specified hardware target: $AUDIO_ID"
     echo "Using device ${AUDIO_ID}"
     # ./alsaspectrometer -D ${AUDIO_ID} -N 32768 -r 96000 -i 1 -T 10
-    ./alsaspectrometer -D ${AUDIO_ID} -N 32768 -r 48000 -i 1 -T 100
+    ./alsaspectrometer -D ${AUDIO_ID} -N 32768 -r 48000 -i 1 -T 10 -C 1
 fi
 
 #arecord -D ${AUDIO_ID} -c 2 -d 60 -r 96000 -f S32_LE test_audio.wav
