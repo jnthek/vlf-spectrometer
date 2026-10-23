@@ -8,22 +8,22 @@
 * @details This code can be used to record spectra using a soundcard. It uses FFTW3 to compute spectra, and writes out the spectra as 
 * a binary file with some metadata. A description of structure of the output binary file format is below.
 * # Binary file format
-*   1) Header
-*      A binary data file starts with a 1024-byte header, which is restructured into a double array of size 128. 
+*   -# Header - 
+*      The binary data file starts with a 1024-byte header, which is restructured into a double array of size 128. 
 *      The contents of this array, in their order, are as follows
-*          a) Epoch :- this is the epoch, in UNIX timestamp format, with respect to which the timestamp offsets are calculated for the spectra.
-*          b) Sampling rate :- Sampling frequency in Hz
-*          c) NFFT :- self explanatory, the spectra have (NFFT/2)+1 values as the input data are real
-*          d) Integration time :- the actual integration time in s, this is generally lower than the desired time entered by the user
-*          e) Data precision :- Indicates whether the spectral data are in float32 format. This is based on a macro USEDOUBLE that can set as a compiler flag.
-*              If the value is 1, the spectra section has float precision (32 bits). 
-*              If the value is 0, the spectra are double precision (64 bits). 
-*          f) Observatory ident :- An eight byte string that has the observatory name. This is a string typecast to double, 
+*       -# Epoch :- this is the epoch, in UNIX timestamp format, with respect to which the timestamp offsets are calculated for the spectra.
+*       -# Sampling rate :- Sampling frequency in Hz
+*       -# NFFT :- self explanatory, the spectra have (NFFT/2)+1 values as the input data are real
+*       -# Integration time :- the actual integration time in s, this is generally lower than the desired time entered by the user
+*       -# Data precision :- Indicates whether the spectral data are in float32 format. This is based on a macro USEDOUBLE that can set as a compiler flag.
+*           -# If the value is 1, the spectra have float precision (32 bits). 
+*           -# If the value is 0, the spectra have double precision (64 bits). 
+*       -# Observatory ident :- An eight byte string that has the observatory name. This is a string typecast to double, 
 *              and can be read in python as a string. This is done in the example jupter notebook.
-*      The rest of the 1024 byte array is padded with zeros, and can be used in future for additional metadata. 
+*       -# The rest of the 1024 byte array is padded with zeros, and can be used in future for additional metadata. 
 *      The reason for doing this way is to enable easy loading into other languages, especially python/numpy 
 *      which has only minimal support for binary files. Besides, the entire header can be inspected easily using a single od command.
-*   2) Spectra
+*   -# Spectra - 
 *      Each spectrum is an (NFFT/2)+2 array, containing a leading timestamp offset (with respect to the epoch given in the header), 
 *      and the next (NFFT/2)+1 points constituting the actual VLF spectrum. This structure is repeated with each integration.
 *      The timestamp offset specified above is the difference between the acquisition time and the starttime specified in the epoch variable above.
@@ -329,7 +329,7 @@ int main(int argc, char *argv[])
     }
     fprintf(stdout, "Exiting .. \n");
     fftw_destroy_plan(p);
-    if (0==munlock(ADC_buffer, Nframes * 4 * 2))
+    if (0==munlock(ADC_buffer, Nframes * sample_size * 2))
     {
         fprintf(stderr, "ADC buffer successfully unlocked\n");
     }
