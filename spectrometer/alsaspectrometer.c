@@ -20,6 +20,8 @@
 *           -# If the value is 0, the spectra have double precision (64 bits). 
 *       -# Observatory ident :- An eight byte string that has the observatory name. This is a string typecast to double, 
 *              and can be read in python as a string. This is done in the example jupter notebook.
+*       -# Channel :- A number that denotes the channel selected by the user. This is either 2 (for LEFT) or 3 (for RIGHT). The reason for this is to 
+               have backward compatibility with data collected with past versions of this code. 
 *       -# The rest of the 1024 byte array is padded with zeros, and can be used in future for additional metadata. 
 *      The reason for doing this way is to enable easy loading into other languages, especially python/numpy 
 *      which has only minimal support for binary files. Besides, the entire header can be inspected easily using a single od command.
@@ -284,6 +286,7 @@ int main(int argc, char *argv[])
         metadata[4] = 1.0;
     #endif
     metadata[5] = (double)obs_ident_encoded;
+    metadata[6] = (double)(channel_index + 2); // Results in 2 for left, 3 for right.
     fwrite (metadata, sizeof(metadata[0]), (1024/sizeof(sizeof(metadata[0]))), file_pointer);
     free(metadata);
 
